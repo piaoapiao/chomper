@@ -141,13 +141,22 @@ def hook_dlopen(uc, address, size, user_data):
 def hook_ui_device_current_device(uc, address, size, user_data):
     emu = user_data["emu"]
     emu.logger.info("+[UIDevice currentDevice] called")
-
+    
 def hook_ui_device_identifier_for_vendor(uc, address, size, user_data):
     emu = user_data["emu"]
-    print("idfv413")
-    #print(user_data)
+    print("idfv413")    
     objc = ObjC(emu)
-    return objc.msg_send("NSUUID", "UUID")
+    uuid = objc.msg_send("NSUUID", "alloc")
+    fixed_uuid= pyobj2nsobj(emu, "922510A7-A0EF-46B9-AA27-BB392944EB04")
+    idfv = objc.msg_send(uuid, "initWithUUIDString:", fixed_uuid)
+    idfvStr = objc.msg_send(idfv, "UUIDString")
+    idfvStrBuf = emu.read_string(objc.msg_send(idfvStr, "cStringUsingEncoding:", 4))
+    print("idfv5")
+    print(type(idfvStrBuf))
+    print(idfvStrBuf)
+
+    return idfv;
+    #return objc.msg_send("NSUUID", "UUID")
 
 def hook_CNCopySupportedInterfaces(uc, address, size, user_data):
     print("hook_CNCopySupportedInterfaces")
