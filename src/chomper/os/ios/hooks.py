@@ -185,6 +185,18 @@ def hook_realloc(uc: Uc, address: int, size: int, user_data: UserData):
 
     return emu.memory_manager.realloc(ptr, size)
 
+# @register_hook("_strlen")
+# def hook_strlen(uc: Uc, address: int, size: int, user_data: UserData):
+#     pass
+    # emu = user_data["emu"]
+    # strBuf = emu.get_arg(0)
+    # strlenStr = emu.read_string(strBuf)
+    # print(f"strlenStr: {strlenStr}")
+
+    # retLen = len(strlenStr)
+    # emu.set_retval(retLen)
+    # print("register_hook_strlen_retval: " + str(retLen))
+
 
 @register_hook("_free")
 def hook_free(uc: Uc, address: int, size: int, user_data: UserData):
@@ -315,6 +327,7 @@ def hook_notify_register_check(uc: Uc, address: int, size: int, user_data: UserD
 @register_hook("_dlopen")
 def hook_dlopen(uc: Uc, address: int, size: int, user_data: UserData):
     emu = user_data["emu"]
+    print("hook_dlopen413")
 
     if not emu.get_arg(0):
         return emu.modules[-1].base

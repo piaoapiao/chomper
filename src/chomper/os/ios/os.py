@@ -71,6 +71,7 @@ OBJC_DEPENDENCIES = [
     "CFNetwork",
     "Foundation",
     "Security",
+    "libresolv.9.dylib",
 ]
 
 # Dependent libraries of UIKit

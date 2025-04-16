@@ -1,4 +1,4 @@
-import os
+# import os
 
 from chomper import Chomper
 from chomper.const import ARCH_ARM64, OS_IOS
