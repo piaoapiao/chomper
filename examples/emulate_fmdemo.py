@@ -53,6 +53,11 @@ def hook_md5FromString(uc, address, size, user_data):
 #     objc = ObjC(emu)
 #     return objc.msg_send("NSUUID", "UUID")
 
+def hook_retval(retval): #hook 修改返回值
+    def decorator(uc, address, size, user_data):
+        return retval
+
+    return decorator
 
 
     
@@ -60,6 +65,12 @@ def hook_md5FromString(uc, address, size, user_data):
 def hook_arc4random(uc, address, size, user_data):
     emu = user_data["emu"]
     emu.logger.info("arc4random called")
+    #emu.set_retval(0)
+    random = emu.get_retval()
+    print(f"arc4random value: {random}")
+    return 0
+
+    #return 1
 
 def hook_cf_uuid_create_string(uc, address, size, user_data):
     emu = user_data["emu"]
@@ -263,6 +274,31 @@ def hook_malloc(uc, address, size, user_data):
     print(f"mallocSize1: {emu.get_arg(1)}");
     print(f"mallocSize2: {emu.get_arg(2)}");
 
+def xor_with_55_and_print_ascii(data: bytes):
+
+    header = "Offset  00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F  Decoded Text"
+    separator = "-" * len(header)
+
+    print(header)
+    print(separator)
+
+    # 每行处理 16 个字节
+    for i in range(0, len(data), 16):
+        chunk = data[i:i + 16]  # 获取当前行数据
+        offset = f"{i:06X}"     # 当前行的偏移量（6 位十六进制）
+
+        # 十六进制表示
+        hex_values = " ".join(f"{b ^ 0x55:02X}" for b in chunk).ljust(3 * 16)
+
+        # ASCII 解码
+        ascii_text = "".join(chr(b ^ 0x55) if 32 <= (b ^ 0x55) <= 126 else "." for b in chunk)
+
+        # 打印当前行
+        print(f"{offset}  {hex_values}  |{ascii_text}|")
+
+    print(separator)
+
+
 def main():
     binary_path = "examples/binaries/ios/com.tongdun.FMDeviceManagerDemo1/FMDeviceManagerDemo"
 
@@ -292,7 +328,9 @@ def main():
         #trace_symbol_calls = trace_inst_callback
         )
 
-    #emu.add_hook("_arc4random", hook_arc4random)
+    emu.add_hook("_arc4random", hook_arc4random)
+
+    emu.add_interceptor(image.base + 0x1c5aa8, hook_retval(0))
 
     emu.add_interceptor("-[UIDevice identifierForVendor]", hook_ui_device_identifier_for_vendor)
 
@@ -441,7 +479,19 @@ def main():
         length = objc.msg_send(dataObj, "length")
         print(f"dataLength: {length}")
         structBytes = emu.read_bytes(dataBytes,length)
-        printDataHexStr(structBytes)
+        #printDataHexStr(structBytes)
+
+        mDataOffset = emu.read_s32(structBuf1Ptr + 56); 
+        print(f"mDataOffset: {mDataOffset}")
+        mData =  emu.read_pointer(structBuf1Ptr + 64);
+
+        deviceData = emu.read_bytes(mData, mDataOffset)
+        xor_with_55_and_print_ascii(deviceData)
+        #printDataHexStr(deviceData)
+
+
+        #mDataOffset = femu.read_s32(structBuf1Ptr + 56); 
+
 
 
 if __name__ == "__main__":
