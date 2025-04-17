@@ -60,15 +60,13 @@ def hook_retval(retval): #hook 修改返回值
     return decorator
 
 
-    
-
 def hook_arc4random(uc, address, size, user_data):
     emu = user_data["emu"]
     emu.logger.info("arc4random called")
-    #emu.set_retval(0)
-    random = emu.get_retval()
+    emu.set_retval(0)
+    random = emu.get_retval()    
     print(f"arc4random value: {random}")
-    return 0
+    #return 0
 
     #return 1
 
@@ -138,7 +136,7 @@ def trace_inst_callback(uc, address, size, user_data):
 
 def hook_retval(retval):
     def decorator(uc, address, size, user_data):
-        print("hook_retval")
+        #print("hook_retval")
         return retval
     return decorator
 
@@ -274,6 +272,21 @@ def hook_malloc(uc, address, size, user_data):
     print(f"mallocSize1: {emu.get_arg(1)}");
     print(f"mallocSize2: {emu.get_arg(2)}");
 
+
+def hook_skip(uc, address, size, user_data):
+    print("hook_skip")
+    print("-[UIScreen nativeBounds]")
+    pass
+
+def hook_NSFileManager_ubiquityIdentityToken(uc, address, size, user_data):
+    print("hook_NSFileManager_ubiquityIdentityToken")
+    #data = b"66 33 c1 e3 98 0e 56 21 96 2f 3e f2 30 a1 3a 71 c8 fe 86 41"
+    hex_string = "66 33 c1 e3 98 0e 56 21 96 2f 3e f2 30 a1 3a 71 c8 fe 86 41"
+    data = bytes.fromhex(hex_string)
+    emu = user_data["emu"]  
+    return pyobj2nsobj(emu,data)
+    
+
 def xor_with_55_and_print_ascii(data: bytes):
 
     header = "Offset  00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F  Decoded Text"
@@ -297,6 +310,78 @@ def xor_with_55_and_print_ascii(data: bytes):
         print(f"{offset}  {hex_values}  |{ascii_text}|")
 
     print(separator)
+
+
+def collectSubAndPrint(emu, image , objc, address):
+    structBuf2Ptr = emu.create_buffer(8);
+    #emu.call_address(image.base + 0x68e48, structBuf2Ptr,100) #  FMDIStruct_Init
+    emu.call_address(image.base + 0x7076c, structBuf2Ptr,100) #  FMDIStruct_Init
+    structBuf1Ptr = emu.read_pointer(structBuf2Ptr); 
+    logger.info("structBuf1Ptr  :0x%2x", structBuf1Ptr)
+    # 0x80c8000
+    
+    structBytes = emu.read_bytes(structBuf1Ptr,0x60)
+    printDataHexStr(structBytes)
+
+    #get addField 0x100070b7c
+    structBytes = emu.read_bytes(structBuf1Ptr + 0x68,8)
+    printDataHexStr(structBytes)
+
+    headPtr = emu.read_pointer(structBuf1Ptr + 24);
+    logger.info("headPtr: 0x%2x", headPtr)
+    structBytes = emu.read_bytes(headPtr,4)
+    printDataHexStr(structBytes)
+    logger.info("printHeadMagic")
+
+
+    deliverOptionsData = pyobj2nsobj(emu, b'{"channel" : "oversea","partner" : "LPZ13", "allowd" : "allowd",\
+      "42cbfcd0c5809fad" : "42cbfcd0c5809fad",\
+      "proxy" : 0,\
+      "profileUrl" : "https:\/\/cn-fp.apitd.net\/ios\/v1",\
+      "searchBlackBoxUrl" : "http:\/\/10.59.81.216:8088\/restricted\/deviceQuery.json",\
+      "location" : false,\
+       "timeLimit" : 15, \
+     "deviceName" : true, \
+      "appKey" : "21e0888fe80cfeb4b3bb228928883ff3", \
+      "appKeyAESPass" : true, \
+      "clientKey" : "c219324c55c2a9bd0d782734076fda21",\
+      "country" : "cn",\
+      "IDFA" : true \
+    }')
+
+
+    deliverOptions = objc.msg_send("NSJSONSerialization", "JSONObjectWithData:options:error:",deliverOptionsData,1,0);
+
+    # keys = objc.msg_send(deliverOptions, "allKeys")
+    # firstKey = objc.msg_send(keys, "firstObject")
+    # firstKeyStr = emu.read_string(objc.msg_send(firstKey, "cStringUsingEncoding:", 4))
+    # logger.info("firstKeyStr: %s", firstKeyStr)
+
+    # logger.info("deliverOptions: %s", deliverOptions)
+    
+    #emu.call_address(image.base + 0x075198, 0,structBuf1Ptr,deliverOptions)  #  collectSub1
+    #print("finished collectSub1")
+
+    #emu.call_address(image.base + 0xab620, 0,structBuf1Ptr,deliverOptions)   #  collectSub2
+    emu.call_address(image.base + address, 0,structBuf1Ptr,deliverOptions)   #  collectSub2
+    print("finished collectSub address : 0x{address:02x}")
+
+    dataObj = emu.call_address(image.base + 0x0715d4, structBuf1Ptr)  #  FMDIStruct_GetStructData    
+    print("FMDIStruct_GetStructData")
+
+    dataBytes = objc.msg_send(dataObj, "bytes")
+    length = objc.msg_send(dataObj, "length")
+    
+    structBytes = emu.read_bytes(dataBytes,length)
+    #printDataHexStr(structBytes)
+
+    mDataOffset = emu.read_s32(structBuf1Ptr + 56); 
+    print(f"mDataOffset: {mDataOffset}")
+    mData =  emu.read_pointer(structBuf1Ptr + 64);
+
+    deviceData = emu.read_bytes(mData, mDataOffset)
+    xor_with_55_and_print_ascii(deviceData)
+
 
 
 def main():
@@ -324,12 +409,14 @@ def main():
     image = emu.load_module(os.path.join(base_path, "..", binary_path),
         exec_init_array = True,
         exec_objc_init = True,
+        trace_symbol_calls=True,
         #trace_inst = True,
         #trace_symbol_calls = trace_inst_callback
         )
 
-    emu.add_hook("_arc4random", hook_arc4random)
+    #emu.add_hook("_arc4random", hook_arc4random)
 
+    # arc4random
     emu.add_interceptor(image.base + 0x1c5aa8, hook_retval(0))
 
     emu.add_interceptor("-[UIDevice identifierForVendor]", hook_ui_device_identifier_for_vendor)
@@ -354,6 +441,15 @@ def main():
     
     emu.add_interceptor("_IORegistryEntryCreateCFProperties", hook_IORegistryEntryCreateCFProperties)
 
+
+    emu.add_interceptor("_NXGetLocalArchInfo", hook_skip)
+
+    emu.add_interceptor("-[UIScreen nativeBounds]", hook_skip)
+
+    emu.add_interceptor("-[NSFileManager ubiquityIdentityToken]", hook_NSFileManager_ubiquityIdentityToken)
+
+    #NXGetLocalArchInfo
+
     #emu.add_hook("+[NSData dataWithBytesNoCopy:length:]", hook_nsdata_WithBytesNoCopy_length)
 
     #emu.add_hook("_strlen", hook_strlen)
@@ -368,25 +464,6 @@ def main():
 
     #emu.add_interceptor("_dlopen", hook_retval(0))
     #add_interceptor
-
-# {
-#   "timeLimit" : 15,
-#   "channel" : "oversea",
-#   "partner" : "LPZ13",
-#   "allowd" : "allowd",
-#   "42cbfcd0c5809fad" : "42cbfcd0c5809fad",
-#   "proxy" : 0,
-#   "profileUrl" : "https:\/\/cn-fp.apitd.net\/ios\/v1",
-#   "searchBlackBoxUrl" : "http:\/\/10.59.81.216:8088\/restricted\/deviceQuery.json",
-#   "location" : true,
-#   "deviceName" : true,
-#   "appKey" : "21e0888fe80cfeb4b3bb228928883ff3",
-#   "appKeyAESPass" : true,
-#   "clientKey" : "c219324c55c2a9bd0d782734076fda21",
-#   "country" : "cn",
-#   "IDFA" : true
-# }
-
 
 
     # Call function
@@ -423,74 +500,11 @@ def main():
     with objc.autorelease_pool():
         logger.info("autorelease_pool")
 
-        structBuf2Ptr = emu.create_buffer(8);
-        #emu.call_address(image.base + 0x68e48, structBuf2Ptr,100) #  FMDIStruct_Init
-        emu.call_address(image.base + 0x7076c, structBuf2Ptr,100) #  FMDIStruct_Init
-        structBuf1Ptr = emu.read_pointer(structBuf2Ptr); 
-        logger.info("structBuf1Ptr  :0x%2x", structBuf1Ptr)
-        # 0x80c8000
-        
-        structBytes = emu.read_bytes(structBuf1Ptr,0x60)
-        printDataHexStr(structBytes)
+        #collectsub1
+        collectSubAndPrint(emu, image, objc, 0x075198)
 
-        #get addField 0x100070b7c
-        structBytes = emu.read_bytes(structBuf1Ptr + 0x68,8)
-        printDataHexStr(structBytes)
-
-        headPtr = emu.read_pointer(structBuf1Ptr + 24);
-        logger.info("headPtr: 0x%2x", headPtr)
-        structBytes = emu.read_bytes(headPtr,4)
-        printDataHexStr(structBytes)
-        logger.info("printHeadMagic")
-
-
-        deliverOptionsData = pyobj2nsobj(emu, b'{"channel" : "oversea","partner" : "LPZ13", "allowd" : "allowd",\
-          "42cbfcd0c5809fad" : "42cbfcd0c5809fad",\
-          "proxy" : 0,\
-          "profileUrl" : "https:\/\/cn-fp.apitd.net\/ios\/v1",\
-          "searchBlackBoxUrl" : "http:\/\/10.59.81.216:8088\/restricted\/deviceQuery.json",\
-          "location" : false,\
-           "timeLimit" : 15, \
-         "deviceName" : true, \
-          "appKey" : "21e0888fe80cfeb4b3bb228928883ff3", \
-          "appKeyAESPass" : true, \
-          "clientKey" : "c219324c55c2a9bd0d782734076fda21",\
-          "country" : "cn",\
-          "IDFA" : true \
-        }')
-
-
-        deliverOptions = objc.msg_send("NSJSONSerialization", "JSONObjectWithData:options:error:",deliverOptionsData,1,0);
-
-        # keys = objc.msg_send(deliverOptions, "allKeys")
-        # firstKey = objc.msg_send(keys, "firstObject")
-        # firstKeyStr = emu.read_string(objc.msg_send(firstKey, "cStringUsingEncoding:", 4))
-        # logger.info("firstKeyStr: %s", firstKeyStr)
-
-        # logger.info("deliverOptions: %s", deliverOptions)
-        
-        emu.call_address(image.base + 0x075198, 0,structBuf1Ptr,deliverOptions)  #  collectSub1
-        print("finished collectSub1")
-
-        dataObj = emu.call_address(image.base + 0x0715d4, structBuf1Ptr)  #  FMDIStruct_GetStructData    
-        print("FMDIStruct_GetStructData")
-
-        dataBytes = objc.msg_send(dataObj, "bytes")
-        length = objc.msg_send(dataObj, "length")
-        print(f"dataLength: {length}")
-        structBytes = emu.read_bytes(dataBytes,length)
-        #printDataHexStr(structBytes)
-
-        mDataOffset = emu.read_s32(structBuf1Ptr + 56); 
-        print(f"mDataOffset: {mDataOffset}")
-        mData =  emu.read_pointer(structBuf1Ptr + 64);
-
-        deviceData = emu.read_bytes(mData, mDataOffset)
-        xor_with_55_and_print_ascii(deviceData)
-        #printDataHexStr(deviceData)
-
-
-        #mDataOffset = femu.read_s32(structBuf1Ptr + 56); 
+        #collectsub2
+        collectSubAndPrint(emu, image, objc, 0xab620)
 
 
 
