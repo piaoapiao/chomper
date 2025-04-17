@@ -128,11 +128,11 @@ def trace_inst_callback(uc, address, size, user_data):
     #     inst = next(emu.cs.disasm_lite(uc.mem_read(address, size), 0))
     #     emu.logger.info(f"Trace at {emu.debug_symbol(address)}: {inst[-2]} {inst[-1]}")
 
-    # # Display all register status
-    #     regs = []
-    #     for i in range(31):
-    #         regs.append(f"x{i}: {hex(emu.uc.reg_read(getattr(arm64_const, f'UC_ARM64_REG_X{i}')))}")
-    #     emu.logger.info(", ".join(regs))
+    # Display all register status
+        # regs = []
+        # for i in range(31):
+        #     regs.append(f"x{i}: {hex(emu.uc.reg_read(getattr(arm64_const, f'UC_ARM64_REG_X{i}')))}")
+        # emu.logger.info(", ".join(regs))
 
 def hook_retval(retval):
     def decorator(uc, address, size, user_data):
@@ -278,6 +278,9 @@ def hook_skip(uc, address, size, user_data):
     print("-[UIScreen nativeBounds]")
     pass
 
+    emu.add_interceptor("+[UIViewController alloc]", hook_skip)
+    emu.add_interceptor("-[UIViewController int]", hook_skip)    
+
 def hook_NSFileManager_ubiquityIdentityToken(uc, address, size, user_data):
     print("hook_NSFileManager_ubiquityIdentityToken")
     #data = b"66 33 c1 e3 98 0e 56 21 96 2f 3e f2 30 a1 3a 71 c8 fe 86 41"
@@ -301,10 +304,12 @@ def xor_with_55_and_print_ascii(data: bytes):
         offset = f"{i:06X}"     # 当前行的偏移量（6 位十六进制）
 
         # 十六进制表示
-        hex_values = " ".join(f"{b ^ 0x55:02X}" for b in chunk).ljust(3 * 16)
+        #hex_values = " ".join(f"{b ^ 0x55:02X}" for b in chunk).ljust(3 * 16)
+        hex_values = " ".join(f"{b :02X}" for b in chunk).ljust(3 * 16)
 
         # ASCII 解码
-        ascii_text = "".join(chr(b ^ 0x55) if 32 <= (b ^ 0x55) <= 126 else "." for b in chunk)
+        #ascii_text = "".join(chr(b ^ 0x55) if 32 <= (b ^ 0x55) <= 126 else "." for b in chunk)
+        ascii_text = "".join(chr(b ) if 32 <= (b ) <= 126 else "." for b in chunk)
 
         # 打印当前行
         print(f"{offset}  {hex_values}  |{ascii_text}|")
@@ -315,7 +320,8 @@ def xor_with_55_and_print_ascii(data: bytes):
 def collectSubAndPrint(emu, image , objc, address):
     structBuf2Ptr = emu.create_buffer(8);
     #emu.call_address(image.base + 0x68e48, structBuf2Ptr,100) #  FMDIStruct_Init
-    emu.call_address(image.base + 0x7076c, structBuf2Ptr,100) #  FMDIStruct_Init
+    #emu.call_address(image.base + 0x7076c, structBuf2Ptr,100) #  FMDIStruct_Init
+    emu.call_address(image.base + 0x959b4, structBuf2Ptr,100) #  FMDIStruct_Init
     structBuf1Ptr = emu.read_pointer(structBuf2Ptr); 
     logger.info("structBuf1Ptr  :0x%2x", structBuf1Ptr)
     # 0x80c8000
@@ -366,7 +372,8 @@ def collectSubAndPrint(emu, image , objc, address):
     emu.call_address(image.base + address, 0,structBuf1Ptr,deliverOptions)   #  collectSub2
     print("finished collectSub address : 0x{address:02x}")
 
-    dataObj = emu.call_address(image.base + 0x0715d4, structBuf1Ptr)  #  FMDIStruct_GetStructData    
+    #dataObj = emu.call_address(image.base + 0x0715d4, structBuf1Ptr)  #  FMDIStruct_GetStructData
+    dataObj = emu.call_address(image.base + 0x9699c, structBuf1Ptr)  #  FMDIStruct_GetStructData    
     print("FMDIStruct_GetStructData")
 
     dataBytes = objc.msg_send(dataObj, "bytes")
@@ -398,7 +405,7 @@ def main():
         enable_ui_kit=True,
         trace_inst=False,
         # Specify custom callback
-        trace_inst_callback=trace_inst_callback
+        trace_inst_callback=trace_inst_callback,
     )
     objc = ObjC(emu)
 
@@ -408,16 +415,17 @@ def main():
     #image = emu.load_module(os.path.join(base_path, "..", binary_path))
     image = emu.load_module(os.path.join(base_path, "..", binary_path),
         exec_init_array = True,
-        exec_objc_init = True,
-        trace_symbol_calls=True,
-        #trace_inst = True,
-        #trace_symbol_calls = trace_inst_callback
+        exec_objc_init = True,   
+        trace_inst = True,
+        trace_symbol_calls = True,
         )
 
     #emu.add_hook("_arc4random", hook_arc4random)
 
     # arc4random
-    emu.add_interceptor(image.base + 0x1c5aa8, hook_retval(0))
+    emu.add_interceptor(image.base + 0x157a8c , hook_retval(0))
+
+    #emu.add_interceptor(image.base + 0xa6614 , hook_skip)
 
     emu.add_interceptor("-[UIDevice identifierForVendor]", hook_ui_device_identifier_for_vendor)
 
@@ -428,6 +436,8 @@ def main():
     emu.add_interceptor("+[UIScreen initialize]", hook_ui_screen_initialize)
     emu.add_interceptor("+[UIScreen mainScreen]", hook_UIScreen_mainScreen)
     emu.add_interceptor("-[UIScreen brightness]", hook_UIScreen_brightness)
+
+
 
     emu.add_hook("+[UIScreen screens]", hook_UIScreen_screens)
 
@@ -447,6 +457,16 @@ def main():
     emu.add_interceptor("-[UIScreen nativeBounds]", hook_skip)
 
     emu.add_interceptor("-[NSFileManager ubiquityIdentityToken]", hook_NSFileManager_ubiquityIdentityToken)
+
+    emu.add_interceptor("_tongduncollect_cryptId", hook_skip) 
+
+
+    # emu.add_interceptor("+[UIViewController initialize]", hook_skip)
+    # emu.add_interceptor("+[UIViewController alloc]", hook_skip)
+    # emu.add_interceptor("-[UIViewController int]", hook_skip)
+    # emu.add_interceptor(image.base + 0x15b9ac  , hook_skip)
+
+    
 
     #NXGetLocalArchInfo
 
@@ -501,10 +521,83 @@ def main():
         logger.info("autorelease_pool")
 
         #collectsub1
-        collectSubAndPrint(emu, image, objc, 0x075198)
+        #collectSubAndPrint(emu, image, objc, 0x075198)
+        #collectSubAndPrint(emu, image, objc, 0x9ca38)
 
         #collectsub2
-        collectSubAndPrint(emu, image, objc, 0xab620)
+        #collectSubAndPrint(emu, image, objc, 0xab620)
+
+        structBuf2Ptr = emu.create_buffer(8);
+        #emu.call_address(image.base + 0x68e48, structBuf2Ptr,100) #  FMDIStruct_Init
+        #emu.call_address(image.base + 0x7076c, structBuf2Ptr,100) #  FMDIStruct_Init
+        emu.call_address(image.base + 0x959b4 , structBuf2Ptr,100) #  FMDIStruct_Init
+        structBuf1Ptr = emu.read_pointer(structBuf2Ptr); 
+        logger.info("structBuf1Ptr  :0x%2x", structBuf1Ptr)
+        # 0x80c8000
+        
+        structBytes = emu.read_bytes(structBuf1Ptr,0x60)
+        printDataHexStr(structBytes)
+
+        #get addField 0x100070b7c
+        structBytes = emu.read_bytes(structBuf1Ptr + 0x68,8)
+        printDataHexStr(structBytes)
+
+        headPtr = emu.read_pointer(structBuf1Ptr + 24);
+        logger.info("headPtr: 0x%2x", headPtr)
+        structBytes = emu.read_bytes(headPtr,4)
+        printDataHexStr(structBytes)
+        logger.info("printHeadMagic")
+
+
+        deliverOptionsData = pyobj2nsobj(emu, b'{"channel" : "oversea","partner" : "LPZ13", "allowd" : "allowd",\
+          "42cbfcd0c5809fad" : "42cbfcd0c5809fad",\
+          "proxy" : 0,\
+          "profileUrl" : "https:\/\/cn-fp.apitd.net\/ios\/v1",\
+          "searchBlackBoxUrl" : "http:\/\/10.59.81.216:8088\/restricted\/deviceQuery.json",\
+          "location" : false,\
+           "timeLimit" : 15, \
+         "deviceName" : true, \
+          "appKey" : "21e0888fe80cfeb4b3bb228928883ff3", \
+          "appKeyAESPass" : true, \
+          "clientKey" : "c219324c55c2a9bd0d782734076fda21",\
+          "country" : "cn",\
+          "IDFA" : true \
+        }')
+
+
+        deliverOptions = objc.msg_send("NSJSONSerialization", "JSONObjectWithData:options:error:",deliverOptionsData,1,0);
+
+        # keys = objc.msg_send(deliverOptions, "allKeys")
+        # firstKey = objc.msg_send(keys, "firstObject")
+        # firstKeyStr = emu.read_string(objc.msg_send(firstKey, "cStringUsingEncoding:", 4))
+        # logger.info("firstKeyStr: %s", firstKeyStr)
+
+        # logger.info("deliverOptions: %s", deliverOptions)
+        
+        #emu.call_address(image.base + 0x075198, 0,structBuf1Ptr,deliverOptions)  #  collectSub1
+        #print("finished collectSub1")
+
+        #emu.call_address(image.base + 0xab620, 0,structBuf1Ptr,deliverOptions)   #  collectSub2
+        #emu.call_address(image.base + address, 0,structBuf1Ptr,deliverOptions)   #  collectSub2
+        emu.call_address(image.base + 0x9ca38 , 0,structBuf1Ptr,deliverOptions)   #  collectSub2
+        print("finished collectSub address : 0x{address:02x}")
+
+        #dataObj = emu.call_address(image.base + 0x0715d4, structBuf1Ptr)  #  FMDIStruct_GetStructData
+        dataObj = emu.call_address(image.base + 0x9699c   , structBuf1Ptr)  #  FMDIStruct_GetStructData    
+        print("FMDIStruct_GetStructData")
+
+        dataBytes = objc.msg_send(dataObj, "bytes")
+        length = objc.msg_send(dataObj, "length")
+        
+        structBytes = emu.read_bytes(dataBytes,length)
+        #printDataHexStr(structBytes)
+
+        mDataOffset = emu.read_s32(structBuf1Ptr + 56); 
+        print(f"mDataOffset: {mDataOffset}")
+        mData =  emu.read_pointer(structBuf1Ptr + 64);
+
+        deviceData = emu.read_bytes(mData, mDataOffset)
+        xor_with_55_and_print_ascii(deviceData)
 
 
 
