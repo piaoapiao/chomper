@@ -64,6 +64,42 @@ def hook_md5FromString(uc, address, size, user_data):
 #     return objc.msg_send("NSUUID", "UUID")
 
 
+# can't call origin md5FromString
+def interceptor_md5FromString(uc, address, size, user_data):
+    emu = user_data["emu"]
+    emu.logger.info("interceptor_md5FromString called")
+    arg0 = emu.get_arg(0)
+    objc = ObjC(emu)
+    originInput_Str = emu.read_string(objc.msg_send(arg0, "UTF8String"))
+    logger.info("origin input  arg: %s", originInput_Str)
+    emu.set_retval(pyobj2nsobj(emu,"123456789"))
+
+    #emu.del_hook(interceptor_md5FromString)
+    #result = emu.call_symbol("_md5FromString",pyobj2nsobj(emu,"123456789"))
+    #result_Str = emu.read_string(objc.msg_send(result, "UTF8String"))
+    #logger.info("_md5FromString_result: %s", result_Str)
+    #emu.set_retval(pyobj2nsobj(emu,"123456789"))
+
+
+    
+def hook_md5FromString(uc, address, size, user_data):
+    emu = user_data["emu"]
+    emu.logger.info("hook_md5FromString called")
+    arg0 = emu.get_arg(0)
+    objc = ObjC(emu)
+    originInput_Str = emu.read_string(objc.msg_send(arg0, "UTF8String"))
+    logger.info("origin input  arg: %s", originInput_Str)    
+
+def modify_md5FromString_arg(uc, address, size, user_data):
+    emu = user_data["emu"]
+    emu.logger.info("modify_md5FromString_arg called")
+    emu.set_arg(0, pyobj2nsobj(emu,"123456789"))
+    #emu.set_retval(pyobj2nsobj(emu,"123456789"))
+
+
+
+
+
 def hook_ui_device_current_device(uc, address, size, user_data):
     emu = user_data["emu"]
     emu.logger.info("+[UIDevice currentDevice] called")
@@ -108,7 +144,16 @@ def main():
     #emu.add_hook("+[ViewController md5FromString:]", hook_md5FromString)
 
     image = emu.load_module(os.path.join(base_path, "..", binary_path))
-    emu.add_hook(image.base + 0x000047d8, hook_md5FromString)
+    #emu.add_hook(image.base + 0x000047d8, hook_md5FromString)
+
+    #emu.add_hook("_md5FromString", hook_md5FromString)
+
+    emu.add_interceptor("_md5FromString", interceptor_md5FromString)
+
+    #emu.add_interceptor(image.base + 0x4760 , modify_md5FromString_arg)
+    #emu.add_hook(image.base + 0x4764 , modify_md5FromString_arg)
+    #emu.add_hook("_md5FromString" , modify_md5FromString_arg)
+    
 
     with objc.autorelease_pool():
 
