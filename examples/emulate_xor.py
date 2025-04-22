@@ -54,6 +54,8 @@ def hook_CC_MD5(uc, address, size, user_data):
     global md5X0
     emu = user_data["emu"]
     emu.logger.info("CC_MD5 called")
+
+    emu.log_backtrace();
     arg0 = emu.get_arg(0)
     md5X0 = emu.get_arg(2)
     print(md5X0)
@@ -65,6 +67,7 @@ def hook_CC_MD5(uc, address, size, user_data):
 def get_CC_MD5_Result(uc, address, size, user_data):
     emu = user_data["emu"]
     emu.logger.info("get_CC_MD5_Result")
+    emu.log_backtrace();
     retValue = emu.get_arg(0)
     print(f"x0 : {retValue}")
     md5Bytes = emu.read_bytes(retValue,16)
@@ -125,6 +128,10 @@ def hook_ui_device_identifier_for_vendor(uc, address, size, user_data):
     objc = ObjC(emu)
     return objc.msg_send("NSUUID", "UUID")
 
+def hook_UIViewController_alloc(uc, address, size, user_data):
+    print("hook_UIViewController_alloc")
+    pass
+
 def main():
     binary_path = "examples/binaries/ios/com.ttt.ChomperTest/build1/ChomperTest"
 
@@ -156,6 +163,9 @@ def main():
     # Hook and intercept
     emu.add_interceptor("-[UIDevice identifierForVendor]", hook_ui_device_identifier_for_vendor)
 
+
+
+
     # error
     #emu.add_hook("+[ViewController md5FromString:]", hook_md5FromString)
 
@@ -168,14 +178,18 @@ def main():
         )
     #emu.add_hook(image.base + 0x000047d8, hook_md5FromString)
 
-    emu.add_hook( image.base + 0x484c , get_CC_MD5_Result)
+    # skip alloc
+    emu.add_interceptor(image.base + 0xc770, hook_UIViewController_alloc)
+    #emu.add_hook(image.base + 0xc770, hook_UIViewController_alloc)
+
+    #emu.add_hook( image.base + 0x484c , get_CC_MD5_Result)
 
     # emu.add_hook("_md5FromString", hook_md5FromString)
 
     #emu.add_interceptor("_md5FromString", interceptor_md5FromString)
 
     #emu.add_interceptor(image.base + 0x4760 , modify_md5FromString_arg)
-    emu.add_hook(image.base + 0x4764 , modify_md5FromString_arg)
+    #emu.add_hook(image.base + 0x4764 , modify_md5FromString_arg)
     #emu.add_hook("_md5FromString" , modify_md5FromString_arg)
     
 
@@ -189,9 +203,11 @@ def main():
 
         hashStr = objc.msg_send("ViewController", "xorString:withKey:", inputStr, key);
 
-        hashStr_str = emu.read_string(objc.msg_send(hashStr, "UTF8String"))
+        #hashStr_str = emu.read_string(objc.msg_send(hashStr, "UTF8String"))
 
-        logger.info("hash result: %s", hashStr_str)
+        #logger.info("hash result: %s", hashStr_str)
+
+        print("end_simulator")
 
 
 
