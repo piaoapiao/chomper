@@ -118,7 +118,22 @@ def modify_md5FromString_arg(uc, address, size, user_data):
     emu.set_arg(0, pyobj2nsobj(emu,"123456789"))
     #emu.set_retval(pyobj2nsobj(emu,"123456789"))
 
+def hook_getenv(uc, address, size, user_data):
+    print("hook_getenv")
+    emu = user_data["emu"]
+    arg0 = emu.get_arg(0)
+    envValue = emu.read_string(arg0);
+    print(envValue)
 
+def hook_getUname(uc, address, size, user_data):
+    print("hook_getUname")
+    emu = user_data["emu"]
+    objc = ObjC(emu)
+    arg0 = emu.get_arg(0)
+    arg0Str = objc.msg_send(str, "UTF8String")
+    envValue = emu.read_string(arg0Str);
+    print(envValue)
+    
 def hook_ui_device_current_device(uc, address, size, user_data):
     emu = user_data["emu"]
     emu.logger.info("+[UIDevice currentDevice] called")
@@ -131,6 +146,46 @@ def hook_ui_device_identifier_for_vendor(uc, address, size, user_data):
 def hook_UIViewController_alloc(uc, address, size, user_data):
     print("hook_UIViewController_alloc")
     pass
+
+def printNSString(emu, objc, str):
+    result = emu.read_string(objc.msg_send(str, "UTF8String"))
+    print(result)
+
+
+def hook_NSString_stringByAppendingString(uc, address, size, user_data):
+    print("hook_NSString_stringByAppendingString")
+    emu = user_data["emu"]
+    objc = ObjC(emu)
+    arg0 = emu.get_arg(0)
+    printNSString(emu, objc, arg0)
+    arg2 = emu.get_arg(2)
+    printNSString(emu, objc, arg2)
+    #print(arg0)
+    #print(arg2)
+    # pyobj2nsobj()
+    # objc = ObjC(emu)
+    # nsstr = objc.msg_send(arg0, "UTF8String")
+    # stringByAppendingString = emu.read_string(nsstr);
+    # print(stringByAppendingString)
+    
+# def hook_NSString_stringByAppendingString2(uc, address, size, user_data):
+#     print("hook_NSString_stringByAppendingString2")
+#     emu = user_data["emu"]
+#     arg0 = emu.get_arg(0)
+#     envValue = emu.read_string(arg0);
+#     print(envValue)
+
+
+def hook_NSString_UTF8String(uc, address, size, user_data):
+    print("NSStringUTF8String")
+    emu = user_data["emu"]
+    objc = ObjC(emu)
+    arg0 = emu.get_arg(0)
+    #result = emu.read_string(objc.msg_send(arg0, "UTF8String"))
+    result = emu.read_string(objc.msg_send(arg0, "cStringUsingEncoding:", 1))    
+    print(result)
+    #printNSString(emu, objc, arg0)
+
 
 def main():
     binary_path = "examples/binaries/ios/com.ttt.ChomperTest/build1/ChomperTest"
@@ -146,11 +201,13 @@ def main():
         enable_ui_kit=True,
         trace_inst=False,
         # Specify custom callback
-        #trace_inst_callback=trace_inst_callback
+        trace_inst_callback=trace_inst_callback
     )
     objc = ObjC(emu)
 
     emu.add_hook("_CC_MD5", hook_CC_MD5)
+
+
 
     # stat = emu.find_symbol("_stat")
     stat = emu.find_symbol("+[UIDevice currentDevice]")
@@ -158,13 +215,18 @@ def main():
     print(stat.address)
 
     # Hook Objetive-C function by symbol name
-    emu.add_hook("+[UIDevice currentDevice]", hook_ui_device_current_device)
+    #emu.add_hook("+[UIDevice currentDevice]", hook_ui_device_current_device)
 
     # Hook and intercept
-    emu.add_interceptor("-[UIDevice identifierForVendor]", hook_ui_device_identifier_for_vendor)
+    #emu.add_interceptor("-[UIDevice identifierForVendor]", hook_ui_device_identifier_for_vendor)
 
+    emu.add_hook("-[NSString stringByAppendingString:]", hook_NSString_stringByAppendingString)
 
+    #emu.add_hook("-[NSMuttableString UTF8String]", hook_NSString_UTF8String)
 
+    emu.add_hook("-[NSString(NSStringOtherEncodings) UTF8String]", hook_NSString_UTF8String)
+
+    #
 
     # error
     #emu.add_hook("+[ViewController md5FromString:]", hook_md5FromString)
@@ -176,10 +238,18 @@ def main():
         trace_inst = True,
         trace_symbol_calls = True,
         )
+
+    
+    #emu.add_hook(image.base + 0x09180, hook_NSString_stringByAppendingString2)
+
+    #emu.add_hook(image.base + 0x8e94, hook_getenv)
+
+    #emu.add_hook(image.base + 0x9110, hook_getUname)    
+
     #emu.add_hook(image.base + 0x000047d8, hook_md5FromString)
 
     # skip alloc
-    emu.add_interceptor(image.base + 0xc770, hook_UIViewController_alloc)
+    #emu.add_interceptor(image.base + 0xc770, hook_UIViewController_alloc)
     #emu.add_hook(image.base + 0xc770, hook_UIViewController_alloc)
 
     #emu.add_hook( image.base + 0x484c , get_CC_MD5_Result)
@@ -198,14 +268,21 @@ def main():
         # ViewControllerClass = objc.msg_send("ViewController", "alloc")
         # viewCtrl =  objc.msg_send(ViewControllerClass, "init")
 
-        inputStr = pyobj2nsobj(emu, "abcdef")
-        key = pyobj2nsobj(emu, "secret")
+        # inputStr = pyobj2nsobj(emu, "abcdef")
+        # key = pyobj2nsobj(emu, "secret")
 
-        hashStr = objc.msg_send("ViewController", "xorString:withKey:", inputStr, key);
+        # hashStr = objc.msg_send("ViewController", "xorString:withKey:", inputStr, key);
 
         #hashStr_str = emu.read_string(objc.msg_send(hashStr, "UTF8String"))
 
         #logger.info("hash result: %s", hashStr_str)
+
+        #objc.msg_send("ViewController", "antiChomperWithBackTyrace");
+
+       # objc.msg_send("ViewController", "wrapBackTrace");
+       # objc.msg_send("ViewController", "antiChomperByEnv");
+       # objc.msg_send("ViewController", "antiChomperByUname");
+        objc.msg_send("ViewController", "wrapAntiChomperByUname");
 
         print("end_simulator")
 
